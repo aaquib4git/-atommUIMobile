@@ -4,6 +4,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
 import { Clock, Beaker, Leaf, Fish, ChevronRight, ChevronLeft, BookOpen, SquareCheck as CheckSquare, Square, Play, RotateCcw, Settings, Timer, Target, BookOpenCheck } from 'lucide-react-native';
+import TestInterface from '@/components/test/TestInterface';
 import axios from 'axios';
 
 type Subject = {
@@ -62,10 +63,21 @@ type TestQuestion = {
   exam_year: string;
 };
 
+type TestResults = {
+  totalQuestions: number;
+  attempted: number;
+  correct: number;
+  incorrect: number;
+  unattempted: number;
+  percentage: number;
+  timeSpent: number;
+  timeTaken: string;
+};
+
 export default function CreateTestScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
-  const [currentStep, setCurrentStep] = useState<'subject' | 'class' | 'chapters' | 'subtopics' | 'configure' | 'test'>('subject');
+  const [currentStep, setCurrentStep] = useState<'subject' | 'class' | 'chapters' | 'subtopics' | 'configure' | 'test' | 'results'>('subject');
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [selectedClass, setSelectedClass] = useState<ClassType>('11');
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -83,9 +95,7 @@ export default function CreateTestScreen() {
     examType: 'neet'
   });
   const [testQuestions, setTestQuestions] = useState<TestQuestion[]>([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<{ [questionId: string]: string }>({});
-  const [showResults, setShowResults] = useState(false);
+  const [testResults, setTestResults] = useState<TestResults | null>(null);
 
   const subjects: Subject[] = [
     {
@@ -244,6 +254,47 @@ export default function CreateTestScreen() {
     }
   };
 
+  const handleTestSubmit = (answers: { [questionId: string]: string }, timeSpent: number) => {
+    // Calculate results
+    let correct = 0;
+    let attempted = 0;
+
+    testQuestions.forEach(question => {
+      const userAnswer = answers[question.question_id];
+      if (userAnswer) {
+        attempted++;
+        if (userAnswer === question.correct_answer) {
+          correct++;
+        }
+      }
+    });
+
+    const results: TestResults = {
+      totalQuestions: testQuestions.length,
+      attempted,
+      correct,
+      incorrect: attempted - correct,
+      unattempted: testQuestions.length - attempted,
+      percentage: attempted > 0 ? Math.round((correct / attempted) * 100) : 0,
+      timeSpent,
+      timeTaken: formatTime(timeSpent)
+    };
+
+    setTestResults(results);
+    setCurrentStep('results');
+  };
+
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    }
+    return `${minutes}m ${secs}s`;
+  };
+
   const handleSubjectSelect = (subject: Subject) => {
     setSelectedSubject(subject);
     setCurrentStep('class');
@@ -328,53 +379,6 @@ export default function CreateTestScreen() {
     setCurrentStep('configure');
   };
 
-  const handleAnswerSelect = (questionId: string, answer: string) => {
-    setSelectedAnswers(prev => ({
-      ...prev,
-      [questionId]: answer
-    }));
-  };
-
-  const handleNextQuestion = () => {
-    if (currentQuestionIndex < testQuestions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    }
-  };
-
-  const handlePreviousQuestion = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev - 1);
-    }
-  };
-
-  const handleSubmitTest = () => {
-    setShowResults(true);
-  };
-
-  const calculateResults = () => {
-    let correct = 0;
-    let attempted = 0;
-
-    testQuestions.forEach(question => {
-      const userAnswer = selectedAnswers[question.question_id];
-      if (userAnswer) {
-        attempted++;
-        if (userAnswer === question.correct_answer) {
-          correct++;
-        }
-      }
-    });
-
-    return {
-      total: testQuestions.length,
-      attempted,
-      correct,
-      incorrect: attempted - correct,
-      unattempted: testQuestions.length - attempted,
-      percentage: attempted > 0 ? Math.round((correct / attempted) * 100) : 0
-    };
-  };
-
   const handleReset = () => {
     setCurrentStep('subject');
     setSelectedSubject(null);
@@ -386,9 +390,7 @@ export default function CreateTestScreen() {
     setChapters([]);
     setError(null);
     setTestQuestions([]);
-    setCurrentQuestionIndex(0);
-    setSelectedAnswers({});
-    setShowResults(false);
+    setTestResults(null);
     setTestConfig({
       testName: '',
       noOfQuestions: 30,
@@ -396,6 +398,64 @@ export default function CreateTestScreen() {
       difficultyLevel: 'medium',
       examType: 'neet'
     });
+  };
+
+  const renderTestResults = () => {
+    if (!testResults) return null;
+
+    return (
+      <Animated.View entering={SlideInUp.duration(400)} style={styles.stepContainer}>
+        <Text style={[styles.stepTitle, { color: colors.text }]}>Test Results</Text>
+        <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>
+          {testConfig.testName}
+        </Text>
+
+        <View style={[styles.resultsCard, { backgroundColor: colors.cardBackground }]}>
+          <View style={styles.scoreContainer}>
+            <Text style={[styles.scoreText, { color: colors.success }]}>
+              {testResults.correct}/{testResults.totalQuestions}
+            </Text>
+            <Text style={[styles.percentageText, { color: colors.success }]}>
+              {testResults.percentage}%
+            </Text>
+          </View>
+
+          <View style={styles.resultsGrid}>
+            <View style={styles.resultItem}>
+              <Text style={[styles.resultValue, { color: colors.text }]}>{testResults.attempted}</Text>
+              <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Attempted</Text>
+            </View>
+            <View style={styles.resultItem}>
+              <Text style={[styles.resultValue, { color: colors.success }]}>{testResults.correct}</Text>
+              <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Correct</Text>
+            </View>
+            <View style={styles.resultItem}>
+              <Text style={[styles.resultValue, { color: colors.danger }]}>{testResults.incorrect}</Text>
+              <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Incorrect</Text>
+            </View>
+            <View style={styles.resultItem}>
+              <Text style={[styles.resultValue, { color: colors.warning }]}>{testResults.unattempted}</Text>
+              <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Unattempted</Text>
+            </View>
+          </View>
+
+          <View style={[styles.timeContainer, { borderTopColor: colors.border }]}>
+            <Timer size={20} color={colors.textSecondary} />
+            <Text style={[styles.timeText, { color: colors.textSecondary }]}>
+              Time Taken: {testResults.timeTaken}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.newTestButton, { backgroundColor: colors.primary }]}
+          onPress={handleReset}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.newTestButtonText}>Create New Test</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
   };
 
   const renderTestConfiguration = () => (
@@ -555,164 +615,6 @@ export default function CreateTestScreen() {
       </TouchableOpacity>
     </Animated.View>
   );
-
-  const renderTestInterface = () => {
-    if (testQuestions.length === 0) {
-      return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
-          <View style={styles.emptyTestContainer}>
-            <Text style={[styles.emptyTestText, { color: colors.textSecondary }]}>
-              No questions available for this test configuration.
-            </Text>
-            <TouchableOpacity
-              style={[styles.backToConfigButton, { backgroundColor: colors.primary }]}
-              onPress={() => setCurrentStep('configure')}
-            >
-              <Text style={styles.backToConfigButtonText}>Back to Configuration</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
-
-    if (showResults) {
-      const results = calculateResults();
-      return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
-          <ScrollView style={styles.resultsContainer} contentContainerStyle={styles.resultsContent}>
-            <Text style={[styles.resultsTitle, { color: colors.text }]}>Test Results</Text>
-            
-            <View style={[styles.resultsCard, { backgroundColor: colors.cardBackground }]}>
-              <View style={styles.resultRow}>
-                <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Score:</Text>
-                <Text style={[styles.resultValue, { color: colors.success }]}>
-                  {results.correct}/{results.total} ({results.percentage}%)
-                </Text>
-              </View>
-              <View style={styles.resultRow}>
-                <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Attempted:</Text>
-                <Text style={[styles.resultValue, { color: colors.text }]}>{results.attempted}</Text>
-              </View>
-              <View style={styles.resultRow}>
-                <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Correct:</Text>
-                <Text style={[styles.resultValue, { color: colors.success }]}>{results.correct}</Text>
-              </View>
-              <View style={styles.resultRow}>
-                <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Incorrect:</Text>
-                <Text style={[styles.resultValue, { color: colors.danger }]}>{results.incorrect}</Text>
-              </View>
-              <View style={styles.resultRow}>
-                <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>Unattempted:</Text>
-                <Text style={[styles.resultValue, { color: colors.warning }]}>{results.unattempted}</Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.newTestButton, { backgroundColor: colors.primary }]}
-              onPress={handleReset}
-            >
-              <Text style={styles.newTestButtonText}>Create New Test</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      );
-    }
-
-    const currentQuestion = testQuestions[currentQuestionIndex];
-    const userAnswer = selectedAnswers[currentQuestion.question_id];
-
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Test Header */}
-        <View style={[styles.testHeader, { backgroundColor: colors.cardBackground, borderBottomColor: colors.border }]}>
-          <Text style={[styles.testTitle, { color: colors.text }]}>{testConfig.testName}</Text>
-          <View style={styles.testProgress}>
-            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-              {currentQuestionIndex + 1} of {testQuestions.length}
-            </Text>
-            <Timer size={16} color={colors.textSecondary} />
-          </View>
-        </View>
-
-        <ScrollView style={styles.questionContainer} contentContainerStyle={styles.questionContent}>
-          {/* Question */}
-          <View style={[styles.questionCard, { backgroundColor: colors.cardBackground }]}>
-            <Text style={[styles.questionNumber, { color: colors.primary }]}>
-              Question {currentQuestionIndex + 1}
-            </Text>
-            <Text style={[styles.questionText, { color: colors.text }]}>
-              {currentQuestion.question_text}
-            </Text>
-          </View>
-
-          {/* Options */}
-          <View style={styles.optionsContainer}>
-            {['option_a', 'option_b', 'option_c', 'option_d'].map((optionKey, index) => {
-              const optionValue = currentQuestion[optionKey as keyof TestQuestion] as string;
-              const optionLabel = String.fromCharCode(65 + index); // A, B, C, D
-              const isSelected = userAnswer === optionValue;
-
-              return (
-                <TouchableOpacity
-                  key={optionKey}
-                  style={[
-                    styles.optionCard,
-                    { 
-                      backgroundColor: isSelected ? colors.primary + '10' : colors.cardBackground,
-                      borderColor: isSelected ? colors.primary : colors.border
-                    }
-                  ]}
-                  onPress={() => handleAnswerSelect(currentQuestion.question_id, optionValue)}
-                >
-                  <Text style={[
-                    styles.optionLabel,
-                    { color: isSelected ? colors.primary : colors.text }
-                  ]}>
-                    {optionLabel}.
-                  </Text>
-                  <Text style={[
-                    styles.optionText,
-                    { color: isSelected ? colors.primary : colors.text }
-                  ]}>
-                    {optionValue}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </ScrollView>
-
-        {/* Navigation Footer */}
-        <View style={[styles.testFooter, { backgroundColor: colors.cardBackground, borderTopColor: colors.border }]}>
-          <TouchableOpacity
-            style={[styles.navButton, currentQuestionIndex === 0 && { opacity: 0.5 }]}
-            onPress={handlePreviousQuestion}
-            disabled={currentQuestionIndex === 0}
-          >
-            <ChevronLeft size={20} color={colors.text} />
-            <Text style={[styles.navButtonText, { color: colors.text }]}>Previous</Text>
-          </TouchableOpacity>
-
-          {currentQuestionIndex === testQuestions.length - 1 ? (
-            <TouchableOpacity
-              style={[styles.submitButton, { backgroundColor: colors.success }]}
-              onPress={handleSubmitTest}
-            >
-              <Text style={styles.submitButtonText}>Submit Test</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.navButton]}
-              onPress={handleNextQuestion}
-            >
-              <Text style={[styles.navButtonText, { color: colors.text }]}>Next</Text>
-              <ChevronRight size={20} color={colors.text} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
 
   const renderSubjectSelection = () => (
     <Animated.View entering={FadeIn.duration(600)} style={styles.stepContainer}>
@@ -979,7 +881,15 @@ export default function CreateTestScreen() {
   };
 
   if (currentStep === 'test') {
-    return renderTestInterface();
+    return (
+      <TestInterface
+        questions={testQuestions}
+        testName={testConfig.testName}
+        testDuration={testConfig.testDuration}
+        onSubmit={handleTestSubmit}
+        onExit={handleReset}
+      />
+    );
   }
 
   return (
@@ -996,6 +906,7 @@ export default function CreateTestScreen() {
         {currentStep === 'chapters' && renderChapterSelection()}
         {currentStep === 'subtopics' && renderSubtopicSelection()}
         {currentStep === 'configure' && renderTestConfiguration()}
+        {currentStep === 'results' && renderTestResults()}
       </ScrollView>
     </View>
   );
@@ -1356,160 +1267,77 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
   },
-  testHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  testTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
-  },
-  testProgress: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  progressText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-  },
-  questionContainer: {
-    flex: 1,
-  },
-  questionContent: {
-    padding: 16,
-  },
-  questionCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-  },
-  questionNumber: {
-    fontSize: 16,
-    fontFamily: 'Inter-Bold',
-    marginBottom: 12,
-  },
-  questionText: {
-    fontSize: 18,
-    fontFamily: 'Inter-Regular',
-    lineHeight: 26,
-  },
-  optionsContainer: {
-    gap: 12,
-  },
-  optionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-  },
-  optionLabel: {
-    fontSize: 16,
-    fontFamily: 'Inter-Bold',
-    marginRight: 12,
-    minWidth: 24,
-  },
-  optionText: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    lineHeight: 22,
-  },
-  testFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-  },
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    gap: 4,
-  },
-  navButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-  },
-  submitButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-  },
-  resultsContainer: {
-    flex: 1,
-  },
-  resultsContent: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  resultsTitle: {
-    fontSize: 28,
-    fontFamily: 'Inter-Bold',
-    marginBottom: 32,
-    textAlign: 'center',
-  },
   resultsCard: {
-    width: '100%',
     borderRadius: 16,
     padding: 24,
     marginBottom: 32,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+    }),
   },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  scoreContainer: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
-  resultLabel: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
+  scoreText: {
+    fontSize: 48,
+    fontFamily: 'Inter-Bold',
+    marginBottom: 8,
+  },
+  percentageText: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+  },
+  resultsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+  },
+  resultItem: {
+    alignItems: 'center',
   },
   resultValue: {
-    fontSize: 18,
+    fontSize: 24,
     fontFamily: 'Inter-Bold',
+    marginBottom: 4,
+  },
+  resultLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    gap: 8,
+  },
+  timeText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
   },
   newTestButton: {
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 12,
+    alignItems: 'center',
   },
   newTestButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-  },
-  emptyTestContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyTestText: {
-    fontSize: 18,
-    fontFamily: 'Inter-Medium',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  backToConfigButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-  },
-  backToConfigButtonText: {
     color: '#fff',
     fontSize: 16,
     fontFamily: 'Inter-Medium',
