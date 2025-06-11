@@ -2,17 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, Modal, Pressable } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Clock, 
-  X, 
-  Eye, 
-  CheckCircle, 
-  Circle, 
-  Bookmark,
-  BarChart3
-} from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Clock, X, Eye, CircleCheck as CheckCircle, Circle, Bookmark, ChartBar as BarChart3 } from 'lucide-react-native';
 import MathRenderer from '@/components/common/MathRenderer';
 
 type TestQuestion = {
